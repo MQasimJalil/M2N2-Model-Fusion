@@ -1,0 +1,20 @@
+# configs/fused.yaml
+# Configuration for training the HybridEfficientNetTRM model
+
+model_name: HybridEfficientNetTRM
+num_classes: 10
+data_dir: cifar-10-batches-py
+
+# Training parameters
+batch_size: 64
+learning_rate: 0.001
+weight_decay: 0.0001
+epochs: 40 # Reduced epochs due to GPU constraints
+
+# TRM specific parameters (Nano-TRM as per plan)
+trm_hidden_dim: 128
+trm_num_recursions: 2
+
+# Checkpointing and reproducibility
+checkpoint_dir: checkpoints/hybrid
+seed: 42 # Default seed, will be overridden by scripts for multi-seed runs
