@@ -104,95 +104,108 @@ class M2N2WeightMerger:
 
     def find_best_merge(self, model_class, models_to_merge, eval_func, num_mix_ratios=5, num_split_points=5):
         """
-        A simplified grid search to find the best merge parameters (mix_ratio, split_idx).
-        This approximates the evolutionary search aspect of M2N2 for finding optimal merge.
+        Iteratively finds the best merge for a list of models (2 or more).
+        Strategy:
+        1. Evaluate all models.
+        2. Sort them by accuracy (highest to lowest).
+        3. Start with the best model as the "current merged model".
+        4. Iteratively merge the "current merged model" with the next best model in the list.
+           For each step, perform a grid search to find the optimal mix_ratio and split_idx.
         
         Args:
-            model_class (nn.Module): The class of the models (e.g., HybridEfficientNetTRM or EfficientNetBaseline).
-                                     Used to instantiate a temporary model for evaluation.
-            models_to_merge (list of nn.Module): A list of 2 trained models (instances) to merge.
-            eval_func (callable): A function that takes a model (nn.Module) and returns its validation accuracy.
-                                  Signature: eval_func(model) -> accuracy (float).
-            num_mix_ratios (int): Number of mix_ratio values to test between 0 and 1 (inclusive).
-            num_split_points (int): Number of split_point_index values to test.
-                                     These are indices into the list of parameter tensors.
+            model_class (nn.Module): The class of the models.
+            models_to_merge (list of nn.Module): A list of 2 or more trained models.
+            eval_func (callable): Function to evaluate a model (returns accuracy).
+            num_mix_ratios (int): Grid search resolution for mix ratio.
+            num_split_points (int): Grid search resolution for split point.
+        
         Returns:
-            tuple: (best_merged_model_state_dict, best_accuracy, best_mix_ratio, best_split_idx)
+            tuple: (best_merged_state_dict, best_accuracy)
         """
-        if len(models_to_merge) != 2:
-            raise ValueError("M2N2 merging currently supports merging exactly two models.")
-        
-        model_a = models_to_merge[0]
-        model_b = models_to_merge[1]
+        if len(models_to_merge) < 2:
+            raise ValueError("Need at least 2 models to merge.")
 
-        best_accuracy = -1.0
-        best_merged_state_dict = None
-        best_mix_ratio = 0.0
-        best_split_idx = 0
-
-        # Evaluate individual models first and set as initial best
+        # 1. Evaluate individual models
         print("Evaluating individual models before merging:")
-        acc_a = eval_func(model_a)
-        print(f"  Model A accuracy: {acc_a:.4f}")
-        acc_b = eval_func(model_b)
-        print(f"  Model B accuracy: {acc_b:.4f}")
+        model_scores = []
+        for i, model in enumerate(models_to_merge):
+            acc = eval_func(model)
+            print(f"  Model {i} accuracy: {acc:.4f}")
+            model_scores.append((acc, model))
+        
+        # 2. Sort by accuracy (Descending) - Best model first
+        model_scores.sort(key=lambda x: x[0], reverse=True)
+        
+        # 3. Start with the best model
+        current_best_acc = model_scores[0][0]
+        current_best_state_dict = deepcopy(model_scores[0][1].state_dict())
+        
+        print(f"\nStarting iterative merge. Base model accuracy: {current_best_acc:.4f}")
 
-        # Determine the initial best
-        if acc_a >= acc_b: # Prefer A if equal
-            best_accuracy = acc_a
-            best_merged_state_dict = deepcopy(model_a.state_dict())
-            best_mix_ratio = 0.0 # Convention: 0.0 means purely model A
-            best_split_idx = None
-        else:
-            best_accuracy = acc_b
-            best_merged_state_dict = deepcopy(model_b.state_dict())
-            best_mix_ratio = 1.0 # Convention: 1.0 means purely model B
-            best_split_idx = None
+        # 4. Iteratively merge with the rest
+        # We assume the "current best" is Model A, and the next candidate is Model B
+        for i in range(1, len(model_scores)):
+            candidate_acc, candidate_model = model_scores[i]
+            print(f"\n--- Merging Step {i}: Current Best ({current_best_acc:.4f}) + Candidate ({candidate_acc:.4f}) ---")
             
-        param_tensor_count = len(list(model_a.state_dict().keys()))
+            # Grid search for this pair
+            step_best_acc = -1.0
+            step_best_sd = None
+            step_best_params = None
 
-        mix_ratios = [i / (num_mix_ratios - 1) for i in range(num_mix_ratios)] if num_mix_ratios > 1 else [0.5]
+            # Temporarily load current best state dict into a model object for the method to use if needed
+            # But merge_state_dicts works on dicts, so we just pass dicts.
+            
+            param_tensor_count = len(list(current_best_state_dict.keys()))
+            
+            mix_ratios = [j / (num_mix_ratios - 1) for j in range(num_mix_ratios)] if num_mix_ratios > 1 else [0.5]
+            
+            split_indices = []
+            if num_split_points > 1:
+                for k in range(num_split_points):
+                    idx = int(param_tensor_count * k / (num_split_points - 1))
+                    split_indices.append(idx)
+                split_indices = sorted(list(set(split_indices)))
+            else:
+                split_indices = [None]
+
+            for mix_ratio in mix_ratios:
+                for split_idx in split_indices:
+                    # Merge current_best (A) with candidate (B)
+                    merged_sd = self.merge_state_dicts(current_best_state_dict, candidate_model.state_dict(), mix_ratio, split_idx)
+                    
+                    # Eval
+                    temp_model = model_class(num_classes=self.num_classes)
+                    temp_model.load_state_dict(merged_sd)
+                    # For fairness/correctness if using BN, we might need to update BN stats here. 
+                    # Assuming eval_func handles what's needed or models are robust.
+                    
+                    acc = eval_func(temp_model)
+                    
+                    if acc > step_best_acc:
+                        step_best_acc = acc
+                        step_best_sd = deepcopy(merged_sd)
+                        step_best_params = (mix_ratio, split_idx)
+            
+            print(f"  Step {i} Result: Best Acc {step_best_acc:.4f} (mix={step_best_params[0]:.2f}, split={step_best_params[1]})")
+
+            # Update current best only if we improved or at least maintained performance?
+            # M2N2 usually implies we take the best found combination.
+            if step_best_acc > current_best_acc:
+                print(f"  -> Improvement found! Updating current model.")
+                current_best_acc = step_best_acc
+                current_best_state_dict = step_best_sd
+            else:
+                print(f"  -> No improvement in this step. Keeping previous best.")
+                # Optional: We could choose to NOT merge if it degrades performance.
+                # But sometimes a slight degradation allows better merging with the *next* model.
+                # For this implementation, let's keep the best of the search (even if lower than previous) 
+                # OR keep previous if search failed to find better. 
+                # Let's stick to "greedy improvement": only update if better.
+                pass 
         
-        # Define strategic split points based on the number of parameter tensors
-        # Example split points: 0%, 25%, 50%, 75%, 100% of the parameter tensors
-        split_indices = []
-        if num_split_points > 1:
-            for i in range(num_split_points):
-                idx = int(param_tensor_count * i / (num_split_points - 1))
-                split_indices.append(idx)
-            split_indices = sorted(list(set(split_indices))) # Ensure uniqueness
-        else: # If only 1 split point requested, use None (global merge)
-            split_indices = [None] 
-
-        print(f"Testing {len(mix_ratios)} mix ratios and {len(split_indices)} split points...")
-        print(f"Mix Ratios: {['{:.2f}'.format(r) for r in mix_ratios]}")
-        print(f"Split Indices (approx. tensor index): {split_indices}")
-
-        for mix_ratio in mix_ratios:
-            for split_idx in split_indices:
-                if (mix_ratio == 0.0 and split_idx is None) or \
-                   (mix_ratio == 1.0 and split_idx is None):
-                    # Skip re-evaluating pure A or pure B if already considered as initial best
-                    continue
-
-                print(f"  Merging with mix_ratio={mix_ratio:.2f}, split_idx={split_idx}")
-                merged_sd = self.merge_state_dicts(model_a.state_dict(), model_b.state_dict(), mix_ratio, split_idx)
-                
-                # Create a temporary model to evaluate the merged state_dict
-                temp_model = model_class(num_classes=self.num_classes)
-                temp_model.load_state_dict(merged_sd)
-                
-                current_accuracy = eval_func(temp_model)
-                print(f"    -> Accuracy: {current_accuracy:.4f}")
-
-                if current_accuracy > best_accuracy:
-                    best_accuracy = current_accuracy
-                    best_merged_state_dict = deepcopy(merged_sd) # Deepcopy to prevent modification
-                    best_mix_ratio = mix_ratio
-                    best_split_idx = split_idx
-        
-        print(f"\nBest merge found: Accuracy={best_accuracy:.4f}, mix_ratio={best_mix_ratio:.2f}, split_idx={best_split_idx}")
-        return best_merged_state_dict, best_accuracy, best_mix_ratio, best_split_idx
+        print(f"\nFinal Merged Accuracy: {current_best_acc:.4f}")
+        return current_best_state_dict, current_best_acc, 0.0, 0 # Return dummy mix/split for compatibility
 
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@ from src.models.efficientnet_lite import EfficientNetLite0
 from src.models.hybrid_model import EfficientNetBaseline, HybridEfficientNetTRM
 from src.utils.metrics import calculate_accuracy
 
-def evaluate_model(model_name, checkpoint_path, num_classes, batch_size, data_dir, trm_hidden_dim=128, trm_num_recursions=2):
+def evaluate_model(model_name, checkpoint_path, num_classes, batch_size, data_dir, trm_hidden_dim=128, trm_num_recursions=2, test_loader=None):
     """
     Evaluates a trained model checkpoint on the CIFAR-10 test set.
 
@@ -23,6 +23,7 @@ def evaluate_model(model_name, checkpoint_path, num_classes, batch_size, data_di
         data_dir (str): Directory where CIFAR-10 dataset is located.
         trm_hidden_dim (int): Hidden dimension for TRM (only relevant for HybridEfficientNetTRM).
         trm_num_recursions (int): Number of recursions for TRM (only relevant for HybridEfficientNetTRM).
+        test_loader (DataLoader, optional): Pre-loaded test data loader. If None, loads standard CIFAR-10.
 
     Returns:
         float: Final test accuracy.
@@ -30,8 +31,9 @@ def evaluate_model(model_name, checkpoint_path, num_classes, batch_size, data_di
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load test data
-    _, test_loader = get_cifar10_loaders(batch_size=batch_size, data_dir=data_dir)
+    # Load test data if not provided
+    if test_loader is None:
+        _, test_loader = get_cifar10_loaders(batch_size=batch_size, data_dir=data_dir)
 
     # Model instantiation
     if model_name == 'EfficientNetBaseline':

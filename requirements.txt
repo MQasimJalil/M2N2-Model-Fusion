@@ -4,3 +4,7 @@ numpy
 pyyaml
 scipy
 tqdm
+scikit-image
+imagecorruptions
+Pillow
+matplotlib

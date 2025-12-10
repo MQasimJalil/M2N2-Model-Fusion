@@ -38,16 +38,19 @@ def train_model(config_path, override_seed=None):
     # Dynamic batch size adjustment logic
     current_batch_size = config['batch_size']
     
+    # Store the run-specific seed
+    run_seed = config['seed'] if override_seed is None else override_seed
+
     while current_batch_size >= 1:
         try:
             print(f"Attempting training with batch size: {current_batch_size}")
-            
-            # Data loaders (re-initialized with new batch size)
-            train_loader, test_loader = get_cifar10_loaders(
-                batch_size=current_batch_size,
-                data_dir=config['data_dir']
-            )
 
+            # 1. FIXED INITIALIZATION
+            # We set a constant seed (0) for model initialization so that all runs 
+            # start from the EXACT SAME random weights. This is crucial for Model Merging (M2N2).
+            print("Initializing model with fixed seed 0 (for weight alignment)...")
+            set_seed(0)
+            
             # Model (re-initialized)
             if config['model_name'] == 'EfficientNetBaseline':
                 model = EfficientNetBaseline(num_classes=config['num_classes']).to(device)
@@ -59,6 +62,18 @@ def train_model(config_path, override_seed=None):
                 ).to(device)
             else:
                 raise ValueError(f"Unknown model name: {config['model_name']}")
+
+            # 2. RUN-SPECIFIC DYNAMICS
+            # Now we switch back to the specific seed for this run (e.g. 42)
+            # This ensures that data shuffling, dropout, and augmentation are unique.
+            print(f"Switching to run-specific seed {run_seed} for training dynamics...")
+            set_seed(run_seed)
+
+            # Data loaders (re-initialized with new batch size)
+            train_loader, test_loader = get_cifar10_loaders(
+                batch_size=current_batch_size,
+                data_dir=config['data_dir']
+            )
 
             # Loss and optimizer
             criterion = nn.CrossEntropyLoss()
