@@ -34,9 +34,6 @@ This project implements and compares a baseline EfficientNet-Lite0 model against
 ├── cifar-10-batches-py/      # CIFAR-10 dataset (will be downloaded here)
 ├── requirements.txt          # Python dependencies for pip
 ├── environment.yml           # Conda environment definition for reproducible setup
-├── Plan.md                   # Detailed project plan
-├── Results.md                # (To be generated) Experiment results, tables, and plots
-└── Questions.md              # (To be generated) 30-40 questions based on the codebase
 ```
 
 ## Setup (Reproducible Environment)
