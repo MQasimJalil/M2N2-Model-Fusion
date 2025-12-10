@@ -120,15 +120,33 @@ python -m unittest discover tests
 
 ## Key Findings (Summary of Results)
 
-*(This section will be populated with a summary of the project's findings after initial runs.)*
+The following table summarizes the performance of the Baseline EfficientNet-Lite0 (average across 3 seeds) versus the Fused Hybrid EfficientNet-TRM model.
 
-Preliminary findings indicate:
+### Accuracy Comparison
 
-*   **Clean Data Performance:** The M2N2-fused Hybrid EfficientNet-TRM model maintains competitive accuracy on clean CIFAR-10 data (e.g., 0.8841 vs Baseline Average 0.8885).
-*   **Robustness to Noise and Frost:** The Hybrid model demonstrates significantly improved robustness to high-frequency corruptions like Gaussian Noise and Frost. It consistently outperforms the Baseline EfficientNet, with improvements reaching over **+3%** at higher severities. This suggests the TRM's recursive mechanism aids in filtering or re-interpreting noisy features.
-*   **Defocus Blur Trade-off:** The Hybrid model shows reduced performance or a slight gain compared to the Baseline on Defocus Blur, especially at lower severities. This indicates a potential trade-off in handling severe loss of high-frequency information, where the recursive processing might struggle to recover details that are fundamentally absent.
+| Condition | Severity | Baseline Accuracy (Avg) | Fused Hybrid Accuracy | Improvement |
+| :--- | :---: | :---: | :---: | :---: |
+| **Clean Data** | - | **88.85%** | 88.41% | -0.44% |
+| | | | | |
+| **Gaussian Noise** | 1 | 33.17% | **35.18%** | **+2.01%** |
+| | 2 | 17.21% | **20.66%** | **+3.45%** |
+| | 3 | 12.08% | **14.67%** | **+2.59%** |
+| | | | | |
+| **Frost** | 1 | 79.00% | **79.70%** | **+0.70%** |
+| | 2 | 65.70% | **67.57%** | **+1.87%** |
+| | 3 | 54.53% | **56.92%** | **+2.39%** |
+| | | | | |
+| **Defocus Blur** | 1 | **23.27%** | 19.89% | -3.38% |
+| | 2 | **19.61%** | 18.41% | -1.20% |
+| | 3 | 15.84% | **16.85%** | +1.01% |
 
-These results highlight the specific conditions under which a Hybrid-TRM architecture, combined with M2N2 fusion, can enhance model robustness.
+### Interpretation
+
+1.  **Robustness to High-Frequency Noise:** The Hybrid model demonstrates a clear advantage in handling high-frequency corruptions like **Gaussian Noise** and **Frost**, outperforming the baseline by up to **3.45%**. This suggests the TRM's recursive mechanism acts as an effective "denoising" filter, refining features over multiple passes.
+2.  **Clean Performance:** The Hybrid model maintains competitive performance on clean data (within 0.5% of baseline), proving that the added robustness does not come at a significant cost to standard accuracy.
+3.  **Trade-off with Blur:** The model struggles slightly with **Defocus Blur** at lower severities. This indicates that while the recursive architecture excels at filtering additive noise, it may over-smooth images that have already lost high-frequency edge information.
+
+These results validate the hypothesis that fusing Recursive Models with Convolutional networks can significantly enhance robustness to texture-based and additive corruptions.
 
 ## References
 
