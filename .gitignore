@@ -4,9 +4,5 @@ results/
 venv/
 *.log
 .vscode/
-cv_model_fusion_prd.md
-Plan.md
-Questions.md
-Project_Deliverable.pdf
 
 __pycache__
